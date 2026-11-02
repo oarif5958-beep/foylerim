@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Föylerim">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="ikon-192.png">
+<title>Föylerim</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; color: #000; font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; font-size: 18px; line-height: 1.35; }
+main { max-width: 640px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+h1 { flex: 1; margin: 0; font-size: 30px; }
+h2 { margin: 26px 0 10px; font-size: 15px; color: #5f5f5f; display: flex; justify-content: space-between; }
+button, input { font: inherit; }
+.yenile { border: 1px solid #cfcfcf; background: #fff; color: #000; border-radius: 12px; min-height: 44px; padding: 0 14px; font-size: 16px; font-weight: 600; }
+.bilgi { margin: 0; font-size: 14px; color: #5f5f5f; }
+.foy { display: block; width: 100%; text-align: left; border: 1px solid #d9d9d9; background: #fff; color: #000; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; font-size: 20px; font-weight: 700; }
+.foy small { display: block; margin-top: 4px; font-size: 14px; font-weight: 400; color: #5f5f5f; }
+.giris { display: grid; gap: 12px; margin-top: 18vh; }
+.giris input { border: 1px solid #bdbdbd; border-radius: 12px; padding: 14px; font-size: 20px; width: 100%; }
+.giris button { border: 0; background: #000; color: #fff; border-radius: 12px; min-height: 54px; font-size: 20px; font-weight: 700; }
+.hata { color: #c0002b; font-size: 16px; margin: 0; }
+.bos { color: #5f5f5f; }
+</style>
+</head>
+<body>
+<main id="kok"></main>
+<script src="okuma.js"></script>
+<script>
+const $k = document.getElementById("kok");
+const oku = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const yaz = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* özel sekmede her açılışta şifre sorulur */ } };
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const b64y = (b) => btoa(String.fromCharCode(...new Uint8Array(b)));
+const el = (ad, ozellik, ...kids) => { const e = document.createElement(ad); Object.assign(e, ozellik || {}); e.append(...kids.filter(Boolean)); return e; };
+const GRUPLAR = [["evde", "Evde çekilecekler"], ["salon", "Salonda çekilecekler"], ["", "Yeri seçilmedi"]];
+let ham = null;
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+async function coz(veri, anahtarHam) {
+  const k = await crypto.subtle.importKey("raw", anahtarHam, "AES-GCM", false, ["decrypt"]);
+  const acik = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(veri.iv) }, k, b64(veri.ct));
+  return JSON.parse(new TextDecoder().decode(acik));
+}
+async function anahtarTuret(sifre, veri) {
+  const t = await crypto.subtle.importKey("raw", new TextEncoder().encode(sifre), "PBKDF2", false, ["deriveBits"]);
+  return crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: b64(veri.tuz), iterations: veri.tur }, t, 256);
+}
+function girisEkrani(hata) {
+  const s = el("input", { type: "password", placeholder: "Şifre", autocomplete: "current-password" });
+  const f = el("form", { className: "giris" }, el("h1", { textContent: "Föylerim" }), s,
+    hata ? el("p", { className: "hata", textContent: hata }) : null, el("button", { textContent: "Aç" }));
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    f.querySelector("button").textContent = "Açılıyor…";
+    try {
+      const a = await anahtarTuret(s.value, ham);
+      const d = await coz(ham, a);
+      yaz("foy:anahtar", b64y(a)); yaz("foy:tuz", ham.tuz);
+      liste(d);
+    } catch (err) { girisEkrani("Şifre yanlış."); }
+  };
+  $k.replaceChildren(f);
+}
+function liste(d, not) {
+  const yenile = el("button", { className: "yenile", textContent: "Yenile", onclick: () => basla() });
+  const fmt = (t) => new Date(t * 1000).toLocaleString("tr-TR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const kids = [el("header", null, el("h1", { textContent: "Föylerim" }), yenile),
+    el("p", { className: "bilgi", textContent: not || (d.guncelleme ? "Son gönderim: " + fmt(d.guncelleme) : "") })];
+  const f = d.foyler || [];
+  if (!f.length) kids.push(el("p", { className: "bos", textContent: "Henüz föy gönderilmedi." }));
+  if (f.length) GRUPLAR.forEach(([yer, ad]) => {
+    const g = f.filter((x) => (x.yer || "") === yer);
+    if (!g.length && !yer) return;
+    kids.push(el("h2", null, el("span", { textContent: ad }), el("span", { textContent: String(g.length) })));
+    if (!g.length) kids.push(el("p", { className: "bos", textContent: "Bu listede föy yok." }));
+    g.forEach((x) => kids.push(el("button", { className: "foy", onclick: () => Okuma.ac(x.kartlar, { id: x.id }) },
+      document.createTextNode(x.baslik), el("small", { textContent: `${x.kartlar.filter((k) => k.tur === "konusma").length} cümle` }))));
+  });
+  $k.replaceChildren(...kids);
+}
+async function basla() {
+  let cevrimdisi = false;
+  try {
+    const r = await fetch("veri.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("yok");
+    if ("caches" in window) caches.open("foy-veri").then((c) => c.put("veri.json", r.clone())).catch(() => {});      // ilk açılışta da internetsiz kopya kalsın
+    cevrimdisi = r.headers.get("x-yedek") === "1";
+    ham = await r.clone().json();
+  } catch (e) {
+    $k.replaceChildren(el("p", { className: "hata", textContent: "Föyler alınamadı. İlk açılış için internet gerekir." }), el("button", { className: "yenile", textContent: "Tekrar dene", onclick: basla }));
+    return;
+  }
+  const a = oku("foy:anahtar");
+  if (!a || oku("foy:tuz") !== ham.tuz) { girisEkrani(); return; }
+  try { liste(await coz(ham, b64(a)), cevrimdisi ? "İnternet yok: son alınan föyler gösteriliyor." : ""); }
+  catch (e) { girisEkrani(); }
+}
+basla();
+</script>
+</body>
+</html>
