@@ -1,5 +1,5 @@
 /* Telefon sayfası salonda internetsiz de açılsın: kabuk önbellekten, föyler önce ağdan sonra son alınan kopyadan. */
-const KABUK = "foy-a03f15fcde06", VERI = "foy-veri";
+const KABUK = "foy-3e672b6f83db", VERI = "foy-veri";
 const DOSYALAR = ["./", "index.html", "okuma.js", "manifest.webmanifest", "ikon-192.png", "ikon-512.png"];
 
 self.addEventListener("install", (e) => {

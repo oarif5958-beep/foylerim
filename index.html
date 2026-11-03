@@ -21,6 +21,14 @@ h2 { margin: 26px 0 10px; font-size: 15px; color: #5f5f5f; display: flex; justif
 button, input { font: inherit; }
 .yenile { border: 1px solid #cfcfcf; background: #fff; color: #000; border-radius: 12px; min-height: 44px; padding: 0 14px; font-size: 16px; font-weight: 600; }
 .bilgi { margin: 0; font-size: 14px; color: #5f5f5f; }
+.satir { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+.satir .foy { margin-bottom: 0; flex: 1; min-width: 0; }
+.sil { flex: none; border: 1px solid #d9d9d9; background: #fff; color: #c0002b; border-radius: 14px; padding: 0 14px; font-size: 16px; font-weight: 600; }
+.silinenler { margin-top: 30px; border-top: 1px solid #e5e5e5; padding-top: 8px; }
+.silinenler summary { font-size: 15px; color: #5f5f5f; padding: 10px 0; }
+.silinen { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 16px; color: #5f5f5f; }
+.silinen span { flex: 1; min-width: 0; }
+.silinen button { border: 1px solid #cfcfcf; background: #fff; color: #000; border-radius: 10px; min-height: 40px; padding: 0 12px; font-size: 15px; font-weight: 600; }
 .foy { display: block; width: 100%; text-align: left; border: 1px solid #d9d9d9; background: #fff; color: #000; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; font-size: 20px; font-weight: 700; }
 .foy small { display: block; margin-top: 4px; font-size: 14px; font-weight: 400; color: #5f5f5f; }
 .giris { display: grid; gap: 12px; margin-top: 18vh; }
@@ -40,6 +48,10 @@ const yaz = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* özel
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const b64y = (b) => btoa(String.fromCharCode(...new Uint8Array(b)));
 const el = (ad, ozellik, ...kids) => { const e = document.createElement(ad); Object.assign(e, ozellik || {}); e.append(...kids.filter(Boolean)); return e; };
+// Çekimi biten föy bu telefonda listeden kalkar (sayfa statik; panele dokunmaz). Föy panelden yeniden gönderilirse tekrar görünür.
+const silinenler = () => { try { return JSON.parse(oku("foy:silinen") || "{}"); } catch (e) { return {}; } };
+const silindi = (x) => (silinenler()[x.id] || 0) >= (x.gonderim || 0);
+function silKaydet(x, sil) { const s = silinenler(); if (sil) s[x.id] = x.gonderim || 0; else delete s[x.id]; yaz("foy:silinen", JSON.stringify(s)); }
 const GRUPLAR = [["evde", "Evde çekilecekler"], ["salon", "Salonda çekilecekler"], ["", "Yeri seçilmedi"]];
 let ham = null;
 
@@ -75,16 +87,28 @@ function liste(d, not) {
   const fmt = (t) => new Date(t * 1000).toLocaleString("tr-TR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   const kids = [el("header", null, el("h1", { textContent: "Föylerim" }), yenile),
     el("p", { className: "bilgi", textContent: not || (d.guncelleme ? "Son gönderim: " + fmt(d.guncelleme) : "") })];
-  const f = d.foyler || [];
-  if (!f.length) kids.push(el("p", { className: "bos", textContent: "Henüz föy gönderilmedi." }));
+  const tum = d.foyler || [], f = tum.filter((x) => !silindi(x)), gizli = tum.filter(silindi);
+  const ciz = () => liste(d, not);
+  if (!f.length) kids.push(el("p", { className: "bos", textContent: tum.length ? "Listede föy kalmadı." : "Henüz föy gönderilmedi." }));
   if (f.length) GRUPLAR.forEach(([yer, ad]) => {
     const g = f.filter((x) => (x.yer || "") === yer);
     if (!g.length && !yer) return;
     kids.push(el("h2", null, el("span", { textContent: ad }), el("span", { textContent: String(g.length) })));
     if (!g.length) kids.push(el("p", { className: "bos", textContent: "Bu listede föy yok." }));
-    g.forEach((x) => kids.push(el("button", { className: "foy", onclick: () => Okuma.ac(x.kartlar, { id: x.id }) },
-      document.createTextNode(x.baslik), el("small", { textContent: `${x.kartlar.filter((k) => k.tur === "konusma").length} cümle` }))));
+    g.forEach((x) => kids.push(el("div", { className: "satir" },
+      el("button", { className: "foy", onclick: () => Okuma.ac(x.kartlar, { id: x.id }) },
+        document.createTextNode(x.baslik), el("small", { textContent: `${x.kartlar.filter((k) => k.tur === "konusma").length} cümle` })),
+      el("button", { className: "sil", textContent: "Sil", "aria-label": x.baslik + " föyünü sil", onclick: () => {
+        if (!confirm(`“${x.baslik}” çekildi mi? Bu telefondaki listeden kalksın mı?`)) return;
+        silKaydet(x, true); ciz();
+      } }))));
   });
+  if (gizli.length) {
+    const kutu = el("details", { className: "silinenler" }, el("summary", { textContent: `Silinenler (${gizli.length})` }));
+    gizli.forEach((x) => kutu.append(el("div", { className: "silinen" }, el("span", { textContent: x.baslik }),
+      el("button", { textContent: "Geri getir", onclick: () => { silKaydet(x, false); ciz(); } }))));
+    kids.push(kutu);
+  }
   $k.replaceChildren(...kids);
 }
 async function basla() {
